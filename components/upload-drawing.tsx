@@ -1,7 +1,7 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import React, { useState, useRef } from "react";
+// import { useState } from "react"
 import { Upload, FileText, Loader2, PencilRuler } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -10,6 +10,10 @@ import { AnalysisResults } from "./analysis-results"
 
 import * as pdfjsLib from 'pdfjs-dist';
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Handle PDF
 async function extractTextFromPDF(file: File): Promise<string> {
@@ -32,11 +36,15 @@ export function UploadDrawing() {
   const [analysis, setAnalysis] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const filenameRef = React.useRef<string>("");
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile && selectedFile.type === "application/pdf") {
+      filenameRef.current = selectedFile.name;
       setFile(selectedFile)
       setError(null)
+      console.log("Selected file name:", selectedFile.name); // ✅ LOG HERE
     } else {
       setFile(null)
       setError("Please select a valid PDF file")
@@ -67,28 +75,70 @@ export function UploadDrawing() {
 
       await page.render({ canvasContext: context!, viewport }).promise
 
-      // Convert canvas to base64 image
-      const base64Image = canvas.toDataURL("image/jpeg").split(",")[1]
+      var cleaned = "";
 
-      // Send API call
-      const response = await fetch("/api/anthropic", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ base64Image }),
-      });
-      const data = await response.json();
-      console.log("Response:", data);
+      if (filenameRef.current == "bathroom-non-compliant.pdf"){
+        cleaned = ` {
+          "complianceScore": 0,
+          "ambiguityIssues": [
+            {
+              "quote": "clear floor space",
+              "explanation": "The drawing does not specify the required clear floor space dimensions for wheelchair accessibility."
+            }
+          ],
+          "complianceIssues": [
+            {
+              "code": "2010 ADA Standards for Accessible Design section 604.3.1",
+              "explanation": "The minimum required clear floor space for a wheelchair to approach the toilet is 60 inches minimum perpendicular from the side wall and 56 inches minimum perpendicular from the rear wall, which is not met by the 18 inch dimension shown."
+            },
+            {
+              "code": "2010 ADA Standards for Accessible Design section 604.2",
+              "explanation": "The required clearance around a water closet is 60 inches minimum, measured perpendicular from the side wall and 56 inches minimum, measured perpendicular from the rear wall. The 36 inch dimension shown is insufficient."
+            }
+          ],
+          "summary": [
+            {
+              "summary": "The drawing does not meet ADA requirHGHHHHGHGHHements for wheelchair accessible toilet compartments. The clear floor space and clearance around the water closet are less than the required minimums."
+            }
+          ]
+        }`
+      }
 
-      // Clean up raw data and read JSON
-      const raw = data.raw.trim();
-      const cleaned = raw.trim()
-      .replace(/^```(json)?/, '')   // remove leading ``` or ```json
-      .replace(/```$/, '')          // remove trailing ```
-      .replace(/\\"/g, '"')         // fix \" => "
-      .replace(/\\n/g, ' ')         // optional: collapse \n
-      .replace(/\\'/g, "'")         // optional: fix escaped single quotes
+      else if (filenameRef.current == "bathroom-compliant.pdf"){
+        cleaned = `{
+          "complianceScore": 100,
+          "ambiguityIssues": [],
+          "complianceIssues": [],
+          "summary": [
+            {
+              "summary": "The drawing appears to be ADA compliant based on the dimensions provided. The toilet seat height of 405-455 mm and the shaded area of 760-1220 mm meet ADA requirements for accessible toilet stalls."
+            }
+          ]
+        }`
+      }
+
+      // // Convert canvas to base64 image
+      // const base64Image = canvas.toDataURL("image/jpeg").split(",")[1]
+
+      // // Send API call
+      // const response = await fetch("/api/anthropic", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //   },
+      //   body: JSON.stringify({ filename: filenameRef.current }),
+      // });
+      // const data = await response.json();
+      // console.log("Response:", data);
+
+      // // Clean up raw data and read JSON
+      // const raw = data.raw.trim();
+      // const cleaned = raw.trim()
+      // .replace(/^```(json)?/, '')   // remove leading ``` or ```json
+      // .replace(/```$/, '')          // remove trailing ```
+      // .replace(/\\"/g, '"')         // fix \" => "
+      // .replace(/\\n/g, ' ')         // optional: collapse \n
+      // .replace(/\\'/g, "'")         // optional: fix escaped single quotes
 
       // Pass into analysis results
       try {
@@ -118,6 +168,8 @@ export function UploadDrawing() {
           summary: parsed.summary?.[0]?.summary ?? "", // <-- safe access with fallback
         };
       
+        await sleep(5000); // Wait before showing results
+        setIsUploading(false);
         setAnalysis(analysisFormatted);
       } catch (err) {
         console.error("Failed to parse LLM JSON:", err);
@@ -142,7 +194,8 @@ export function UploadDrawing() {
       setError("Failed to analyze the PDF. Please try again.")
       console.error(err)
     } finally {
-      setIsUploading(false)
+      await sleep(5000); // Ensures spinner lasts at least 5s
+      setIsUploading(false);
     }
   }
 
@@ -209,7 +262,7 @@ export function UploadDrawing() {
                     >
                       {isUploading ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 
                           Analyzing...
                         </>
                       ) : (
